@@ -1,0 +1,54 @@
+name: Archive traffic data
+
+on:
+  schedule:
+    - cron: '0 6 * * *'   # runs daily at 6 AM UTC
+  workflow_dispatch:        # lets you trigger it manually too
+
+permissions:
+  contents: write
+
+jobs:
+  archive:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch and save traffic
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          mkdir -p traffic
+
+          for endpoint in views clones; do
+            curl -s -H "Authorization: Bearer $GH_TOKEN" \
+              "https://api.github.com/repos/$REPO/traffic/$endpoint?per=day" \
+              >> traffic/${endpoint}_raw.json
+          done
+
+          # Append today's timestamp and merge into history
+          node -e "
+            const fs = require('fs');
+            const today = new Date().toISOString().split('T')[0];
+            for (const name of ['views', 'clones']) {
+              const raw = JSON.parse(fs.readFileSync('traffic/' + name + '_raw.json'));
+              const file = 'traffic/' + name + '.json';
+              const history = fs.existsSync(file) ? JSON.parse(fs.readFileSync(file)) : [];
+              const existing = new Set(history.map(r => r.timestamp));
+              for (const row of raw[name] || []) {
+                if (!existing.has(row.timestamp)) history.push(row);
+              }
+              fs.writeFileSync(file, JSON.stringify(history, null, 2));
+            }
+          "
+
+          rm -f traffic/*_raw.json
+
+      - name: Commit
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add traffic/
+          git diff --cached --quiet || git commit -m "chore: archive traffic $(date +%F)"
+          git push
