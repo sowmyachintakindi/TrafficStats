@@ -19,7 +19,7 @@ jobs:
 
       - name: Fetch and save traffic
         env:
-          GH_TOKEN: ${{ secrets.TOKEN }}
+          GH_TOKEN: ${{ secrets.TRAFFIC_TOKEN }}
           REPO: sowmyachintakindi/PerfMLOps_Zero_Human_ML_Performance_Framework
         run: |
           mkdir -p traffic
