@@ -19,7 +19,7 @@ jobs:
 
       - name: Fetch and save traffic
         env:
-          GH_TOKEN: ${{ secrets.TRAFFIC_TOKEN }}
+          GH_TOKEN: ${{ secrets.TOKEN }}
           REPO: sowmyachintakindi/PerfMLOps_Zero_Human_ML_Performance_Framework
         run: |
           mkdir -p traffic
@@ -34,16 +34,36 @@ jobs:
 
             function saveCSV(filename, newRows) {
               let existing = new Set();
+              let allRows = [];
+
               if (fs.existsSync(filename)) {
                 const lines = fs.readFileSync(filename, 'utf8').trim().split('\n');
-                lines.slice(1).forEach(l => existing.add(l.split(',')[0]));
-              } else {
-                fs.writeFileSync(filename, 'date,count,uniques\n');
+                lines.slice(1).forEach(l => {
+                  if (!l.startsWith('TOTAL')) {
+                    existing.add(l.split(',')[0]);
+                    allRows.push(l);
+                  }
+                });
               }
+
               const toAdd = newRows
-                .filter(r => !existing.has(r.timestamp))
+                .filter(r => !existing.has(r.timestamp.split('T')[0]))
                 .map(r => r.timestamp.split('T')[0] + ',' + r.count + ',' + r.uniques);
-              if (toAdd.length) fs.appendFileSync(filename, toAdd.join('\n') + '\n');
+
+              allRows = [...allRows, ...toAdd];
+
+              let totalCount = 0, totalUniques = 0;
+              allRows.forEach(l => {
+                const parts = l.split(',');
+                totalCount   += parseInt(parts[1]) || 0;
+                totalUniques += parseInt(parts[2]) || 0;
+              });
+
+              const content = 'date,count,uniques\n'
+                + allRows.join('\n') + '\n'
+                + 'TOTAL,' + totalCount + ',' + totalUniques + '\n';
+
+              fs.writeFileSync(filename, content);
             }
 
             const views  = $VIEWS;
