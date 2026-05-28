@@ -20,7 +20,7 @@ jobs:
       - name: Fetch and save traffic
         env:
           GH_TOKEN: ${{ secrets.TRAFFIC_TOKEN }}
-          REPO: ${{ github.repository }}
+          REPO: https://github.com/sowmyachintakindi/PerfMLOps_Zero_Human_ML_Performance_Framework
         run: |
           echo "Repo: $REPO"
 
