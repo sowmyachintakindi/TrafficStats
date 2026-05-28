@@ -32,61 +32,31 @@ jobs:
           node -e "
             const fs = require('fs');
 
-            // --- Save JSON ---
-            function saveJSON(filename, newRows, key) {
-              const history = fs.existsSync(filename)
-                ? JSON.parse(fs.readFileSync(filename)) : [];
-              const existing = new Set(history.map(r => r.timestamp));
-              for (const row of newRows) {
-                if (!existing.has(row.timestamp)) history.push(row);
+            function saveCSV(filename, newRows) {
+              let existing = new Set();
+              if (fs.existsSync(filename)) {
+                const lines = fs.readFileSync(filename, 'utf8').trim().split('\n');
+                lines.slice(1).forEach(l => existing.add(l.split(',')[0]));
+              } else {
+                fs.writeFileSync(filename, 'date,count,uniques\n');
               }
-              history.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
-              fs.writeFileSync(filename, JSON.stringify(history, null, 2));
-              return history;
+              const toAdd = newRows
+                .filter(r => !existing.has(r.timestamp))
+                .map(r => r.timestamp.split('T')[0] + ',' + r.count + ',' + r.uniques);
+              if (toAdd.length) fs.appendFileSync(filename, toAdd.join('\n') + '\n');
             }
 
-            const views = $VIEWS;
+            const views  = $VIEWS;
             const clones = $CLONES;
 
-            const allViews  = saveJSON('traffic/views.json',  views.views   || [], 'views');
-            const allClones = saveJSON('traffic/clones.json', clones.clones || [], 'clones');
-
-            // --- Generate HTML table ---
-            function tableRows(data) {
-              return [...data].reverse().map(r => {
-                const date = r.timestamp.split('T')[0];
-                return '<tr><td>' + date + '</td><td>' + r.count + '</td><td>' + r.uniques + '</td></tr>';
-              }).join('');
-            }
-
-            const html = '<!DOCTYPE html><html><head><title>Traffic Stats</title><style>'
-              + 'body{font-family:sans-serif;max-width:900px;margin:40px auto;padding:0 20px}'
-              + 'h2{margin-top:40px}'
-              + 'table{width:100%;border-collapse:collapse}'
-              + 'th,td{padding:10px;border:1px solid #ddd;text-align:left}'
-              + 'th{background:#f5f5f5;font-weight:600}'
-              + 'tr:nth-child(even){background:#fafafa}'
-              + '.updated{color:#888;font-size:13px}'
-              + '</style></head><body>'
-              + '<h1>📊 Repo Traffic</h1>'
-              + '<p class="updated">Last updated: ' + new Date().toUTCString() + '</p>'
-              + '<h2>Views</h2>'
-              + '<table><tr><th>Date</th><th>Total views</th><th>Unique visitors</th></tr>'
-              + tableRows(allViews)
-              + '</table>'
-              + '<h2>Clones</h2>'
-              + '<table><tr><th>Date</th><th>Total clones</th><th>Unique cloners</th></tr>'
-              + tableRows(allClones)
-              + '</table>'
-              + '</body></html>';
-
-            fs.writeFileSync('index.html', html);
+            saveCSV('traffic/views.csv',  views.views   || []);
+            saveCSV('traffic/clones.csv', clones.clones || []);
           "
 
       - name: Commit
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add traffic/ index.html
+          git add traffic/
           git diff --cached --quiet || git commit -m "chore: archive traffic $(date +%F)"
           git push
