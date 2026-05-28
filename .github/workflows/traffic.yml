@@ -20,57 +20,97 @@ jobs:
       - name: Fetch and save traffic
         env:
           GH_TOKEN: ${{ secrets.TOKEN }}
-          REPO: sowmyachintakindi/PerfMLOps_Zero_Human_ML_Performance_Framework
         run: |
           mkdir -p traffic
 
-          VIEWS=$(curl -s -H "Authorization: Bearer $GH_TOKEN" \
-            "https://api.github.com/repos/$REPO/traffic/views?per=day")
-          CLONES=$(curl -s -H "Authorization: Bearer $GH_TOKEN" \
-            "https://api.github.com/repos/$REPO/traffic/clones?per=day")
+          REPOS="sowmyachintakindi/PerfMLOps_Zero_Human_ML_Performance_Framework sowmyachintakindi/TrafficStats"
+
+          for REPO in $REPOS; do
+            SLUG=$(echo $REPO | cut -d'/' -f2)
+            VIEWS=$(curl -s -H "Authorization: Bearer $GH_TOKEN" \
+              "https://api.github.com/repos/$REPO/traffic/views?per=day")
+            CLONES=$(curl -s -H "Authorization: Bearer $GH_TOKEN" \
+              "https://api.github.com/repos/$REPO/traffic/clones?per=day")
+            echo "$VIEWS"  > traffic/${SLUG}_views_raw.json
+            echo "$CLONES" > traffic/${SLUG}_clones_raw.json
+          done
 
           node -e "
             const fs = require('fs');
 
-            function saveCSV(filename, newRows) {
-              let existing = new Set();
-              let allRows = [];
+            const repos = 'sowmyachintakindi/PerfMLOps_Zero_Human_ML_Performance_Framework sowmyachintakindi/TrafficStats'.split(' ');
+            const slugs = repos.map(r => r.split('/')[1]);
 
+            function buildCSV(type) {
+              const filename = 'traffic/' + type + '.csv';
+
+              // Load all raw data per repo
+              const repoData = {};
+              const allDates = new Set();
+
+              slugs.forEach(slug => {
+                const raw = JSON.parse(fs.readFileSync('traffic/' + slug + '_' + type + '_raw.json'));
+                repoData[slug] = {};
+                (raw[type] || []).forEach(r => {
+                  const date = r.timestamp.split('T')[0];
+                  repoData[slug][date] = { count: r.count, uniques: r.uniques };
+                  allDates.add(date);
+                });
+              });
+
+              // Merge with existing CSV
+              let existingRows = {};
               if (fs.existsSync(filename)) {
                 const lines = fs.readFileSync(filename, 'utf8').trim().split('\n');
                 lines.slice(1).forEach(l => {
-                  if (!l.startsWith('TOTAL')) {
-                    existing.add(l.split(',')[0]);
-                    allRows.push(l);
-                  }
+                  if (l.startsWith('TOTAL')) return;
+                  const parts = l.split(',');
+                  const date = parts[0];
+                  allDates.add(date);
+                  existingRows[date] = parts;
                 });
               }
 
-              const toAdd = newRows
-                .filter(r => !existing.has(r.timestamp.split('T')[0]))
-                .map(r => r.timestamp.split('T')[0] + ',' + r.count + ',' + r.uniques);
+              // Build header
+              const header = ['date', ...slugs.flatMap(s => [s + '_count', s + '_uniques'])];
 
-              allRows = [...allRows, ...toAdd];
-
-              let totalCount = 0, totalUniques = 0;
-              allRows.forEach(l => {
-                const parts = l.split(',');
-                totalCount   += parseInt(parts[1]) || 0;
-                totalUniques += parseInt(parts[2]) || 0;
+              // Build rows
+              const sortedDates = [...allDates].filter(d => d).sort();
+              const rows = sortedDates.map(date => {
+                const existing = existingRows[date] || [];
+                return [
+                  date,
+                  ...slugs.flatMap((slug, i) => {
+                    const newData = repoData[slug][date];
+                    if (newData) return [newData.count, newData.uniques];
+                    // Keep existing values if no new data
+                    const base = 1 + i * 2;
+                    return [existing[base] || 0, existing[base + 1] || 0];
+                  })
+                ];
               });
 
-              const content = 'date,count,uniques\n'
-                + allRows.join('\n') + '\n'
-                + 'TOTAL,' + totalCount + ',' + totalUniques + '\n';
+              // Totals row
+              const totals = ['TOTAL', ...slugs.flatMap((slug, i) => {
+                const base = 1 + i * 2;
+                const tc = rows.reduce((s, r) => s + parseInt(r[base])   || 0, 0);
+                const tu = rows.reduce((s, r) => s + parseInt(r[base+1]) || 0, 0);
+                return [tc, tu];
+              })];
+
+              const content = header.join(',') + '\n'
+                + rows.map(r => r.join(',')).join('\n') + '\n'
+                + totals.join(',') + '\n';
 
               fs.writeFileSync(filename, content);
             }
 
-            const views  = $VIEWS;
-            const clones = $CLONES;
+            buildCSV('views');
+            buildCSV('clones');
 
-            saveCSV('traffic/views.csv',  views.views   || []);
-            saveCSV('traffic/clones.csv', clones.clones || []);
+            // Cleanup raw files
+            const files = fs.readdirSync('traffic').filter(f => f.endsWith('_raw.json'));
+            files.forEach(f => fs.unlinkSync('traffic/' + f));
           "
 
       - name: Commit
