@@ -21,9 +21,11 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.TRAFFIC_TOKEN }}
           REPO: sowmyachintakindi/PerfMLOps_Zero_Human_ML_Performance_Framework
+          REPO1: ${{ github.repository }}
         run: |
           echo "Repo: $REPO"
-          echo "Repo: $REPO"
+          echo "Repo: $REPO1"
+          echo "Token: ${GH_TOKEN}"
           echo "Token length: ${#GH_TOKEN}"
 
           mkdir -p traffic
