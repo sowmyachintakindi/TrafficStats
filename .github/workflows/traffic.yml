@@ -23,6 +23,8 @@ jobs:
           REPO: sowmyachintakindi/PerfMLOps_Zero_Human_ML_Performance_Framework
         run: |
           echo "Repo: $REPO"
+          echo "Repo: $REPO"
+          echo "Token length: ${#GH_TOKEN}"
 
           mkdir -p traffic
 
