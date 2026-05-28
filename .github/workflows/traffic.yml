@@ -44,7 +44,6 @@ jobs:
             function buildCSV(type) {
               const filename = 'traffic/' + type + '.csv';
 
-              // Load all raw data per repo
               const repoData = {};
               const allDates = new Set();
 
@@ -58,11 +57,10 @@ jobs:
                 });
               });
 
-              // Merge with existing CSV
               let existingRows = {};
               if (fs.existsSync(filename)) {
                 const lines = fs.readFileSync(filename, 'utf8').trim().split('\n');
-                lines.slice(1).forEach(l => {
+                lines.slice(2).forEach(l => {
                   if (l.startsWith('TOTAL')) return;
                   const parts = l.split(',');
                   const date = parts[0];
@@ -71,10 +69,12 @@ jobs:
                 });
               }
 
-              // Build header
-              const header = ['date', ...slugs.flatMap(s => [s + '_count', s + '_uniques'])];
+              // Two-row header:
+              // row1: date, repo1, ,      repo2, 
+              // row2: date, count, uniques, count, uniques
+              const header1 = ['date', ...slugs.flatMap(s => [s, ''])];
+              const header2 = ['date', ...slugs.flatMap(() => ['count', 'uniques'])];
 
-              // Build rows
               const sortedDates = [...allDates].filter(d => d).sort();
               const rows = sortedDates.map(date => {
                 const existing = existingRows[date] || [];
@@ -83,22 +83,21 @@ jobs:
                   ...slugs.flatMap((slug, i) => {
                     const newData = repoData[slug][date];
                     if (newData) return [newData.count, newData.uniques];
-                    // Keep existing values if no new data
                     const base = 1 + i * 2;
                     return [existing[base] || 0, existing[base + 1] || 0];
                   })
                 ];
               });
 
-              // Totals row
               const totals = ['TOTAL', ...slugs.flatMap((slug, i) => {
                 const base = 1 + i * 2;
-                const tc = rows.reduce((s, r) => s + parseInt(r[base])   || 0, 0);
-                const tu = rows.reduce((s, r) => s + parseInt(r[base+1]) || 0, 0);
+                const tc = rows.reduce((s, r) => s + (parseInt(r[base])   || 0), 0);
+                const tu = rows.reduce((s, r) => s + (parseInt(r[base+1]) || 0), 0);
                 return [tc, tu];
               })];
 
-              const content = header.join(',') + '\n'
+              const content = header1.join(',') + '\n'
+                + header2.join(',') + '\n'
                 + rows.map(r => r.join(',')).join('\n') + '\n'
                 + totals.join(',') + '\n';
 
@@ -108,7 +107,6 @@ jobs:
             buildCSV('views');
             buildCSV('clones');
 
-            // Cleanup raw files
             const files = fs.readdirSync('traffic').filter(f => f.endsWith('_raw.json'));
             files.forEach(f => fs.unlinkSync('traffic/' + f));
           "
