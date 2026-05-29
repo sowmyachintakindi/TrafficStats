@@ -33,7 +33,7 @@ jobs:
         run: |
           mkdir -p traffic charts
 
-          REPOS="sowmyachintakindi/PerfMLOps_Zero_Human_ML_Performance_Framework sowmyachintakindi/TrafficStats"
+          REPOS="sowmyachintakindi/PerfMLOps_Zero_Human_ML_Performance_Framework sowmyachintakindi/Energy_Proportional_AI_Load_Balancing sowmyachintakindi/Elastic_ML_Training_Infrastructure sowmyachintakindi/API_onPrem_vs_AWSEC2_vs_AWSLambda"
 
           for REPO in $REPOS; do
             SLUG=$(echo $REPO | cut -d'/' -f2)
