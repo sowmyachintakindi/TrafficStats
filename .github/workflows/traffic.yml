@@ -109,8 +109,6 @@ jobs:
               const grandCount   = repoTotals.reduce((s, t) => s + t.count,   0);
               const grandUniques = repoTotals.reduce((s, t) => s + t.uniques, 0);
 
-              const header1 = ['date', ...slugs.flatMap(s => [s, ''])];
-              const header2 = ['date', ...slugs.flatMap(() => ['count', 'uniques'])];
               const totalsRow = ['TOTAL', ...repoTotals.flatMap(t => [t.count, t.uniques])];
 
               fs.writeFileSync(filename,
