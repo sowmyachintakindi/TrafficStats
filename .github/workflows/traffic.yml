@@ -27,7 +27,7 @@ jobs:
 
       - name: Fetch and save traffic
         env:
-          GH_TOKEN: ${{ secrets.TOKEN }}
+          GH_TOKEN: ${{ secrets.TRAFFIC_TOKEN }}
         run: |
           mkdir -p traffic charts
 
@@ -165,7 +165,8 @@ jobs:
             );
 
             // Clones chart
-            generateChart('Clones per day', cDates,slugs.flatMap((slug, i) => [
+            generateChart('Clones per day', cDates,
+              slugs.flatMap((slug, i) => [
                 {
                   label: slug + ' clones',
                   data: cRows.map(r => parseInt(r[1 + i * 2]) || 0),
