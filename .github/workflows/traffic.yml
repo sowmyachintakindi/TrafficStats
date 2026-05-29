@@ -16,12 +16,22 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm install canvas chart.js
 
       - name: Fetch and save traffic
         env:
           GH_TOKEN: ${{ secrets.TOKEN }}
         run: |
-          mkdir -p traffic
+          mkdir -p traffic charts
 
           REPOS="sowmyachintakindi/PerfMLOps_Zero_Human_ML_Performance_Framework sowmyachintakindi/TrafficStats"
 
@@ -37,13 +47,15 @@ jobs:
 
           node -e "
             const fs = require('fs');
+            const { createCanvas } = require('canvas');
+            const { Chart } = require('chart.js/auto');
 
             const repos = 'sowmyachintakindi/PerfMLOps_Zero_Human_ML_Performance_Framework sowmyachintakindi/TrafficStats'.split(' ');
             const slugs = repos.map(r => r.split('/')[1]);
+            const COLORS = ['#6366f1','#14b8a6','#f59e0b','#ef4444'];
 
             function buildCSV(type) {
               const filename = 'traffic/' + type + '.csv';
-
               const repoData = {};
               const allDates = new Set();
 
@@ -69,9 +81,6 @@ jobs:
                 });
               }
 
-              // Two-row header:
-              // row1: date, repo1, ,      repo2, 
-              // row2: date, count, uniques, count, uniques
               const header1 = ['date', ...slugs.flatMap(s => [s, ''])];
               const header2 = ['date', ...slugs.flatMap(() => ['count', 'uniques'])];
 
@@ -89,6 +98,7 @@ jobs:
                 ];
               });
 
+              // Totals — always recalculated from all rows so squashing never affects them
               const totals = ['TOTAL', ...slugs.flatMap((slug, i) => {
                 const base = 1 + i * 2;
                 const tc = rows.reduce((s, r) => s + (parseInt(r[base])   || 0), 0);
@@ -102,19 +112,154 @@ jobs:
                 + totals.join(',') + '\n';
 
               fs.writeFileSync(filename, content);
+              return { rows, sortedDates };
             }
 
-            buildCSV('views');
-            buildCSV('clones');
+            function generateChart(title, labels, datasets, outfile) {
+              const width = 900, height = 400;
+              const canvas = createCanvas(width, height);
+              const ctx = canvas.getContext('2d');
+              ctx.fillStyle = '#ffffff';
+              ctx.fillRect(0, 0, width, height);
+
+              new Chart(ctx, {
+                type: 'line',
+                data: { labels, datasets },
+                options: {
+                  responsive: false,
+                  animation: false,
+                  plugins: {
+                    title: { display: true, text: title, font: { size: 16 } },
+                    legend: { position: 'bottom' }
+                  },
+                  scales: {
+                    x: { ticks: { maxRotation: 45 } },
+                    y: { beginAtZero: true }
+                  }
+                }
+              });
+
+              fs.writeFileSync(outfile, canvas.toBuffer('image/png'));
+            }
+
+            const { rows: vRows, sortedDates: vDates } = buildCSV('views');
+            const { rows: cRows, sortedDates: cDates } = buildCSV('clones');
+
+            generateChart('Views per day', vDates,
+              slugs.flatMap((slug, i) => [
+                {
+                  label: slug + ' views',
+                  data: vRows.map(r => parseInt(r[1 + i * 2]) || 0),
+                  borderColor: COLORS[i * 2],
+                  backgroundColor: COLORS[i * 2] + '22',
+                  tension: 0.3, fill: true
+                },
+                {
+                  label: slug + ' uniques',
+                  data: vRows.map(r => parseInt(r[2 + i * 2]) || 0),
+                  borderColor: COLORS[i * 2 + 1],
+                  borderDash: [5, 5],
+                  tension: 0.3, fill: false
+                }
+              ]),
+              'charts/views.png'
+            );
+
+            generateChart('Clones per day', cDates,
+              slugs.flatMap((slug, i) => [
+                {
+                  label: slug + ' clones',
+                  data: cRows.map(r => parseInt(r[1 + i * 2]) || 0),
+                  borderColor: COLORS[i * 2],
+                  backgroundColor: COLORS[i * 2] + '22',
+                  tension: 0.3, fill: true
+                },
+                {
+                  label: slug + ' unique cloners',
+                  data: cRows.map(r => parseInt(r[2 + i * 2]) || 0),
+                  borderColor: COLORS[i * 2 + 1],
+                  borderDash: [5, 5],
+                  tension: 0.3, fill: false
+                }
+              ]),
+              'charts/clones.png'
+            );
 
             const files = fs.readdirSync('traffic').filter(f => f.endsWith('_raw.json'));
             files.forEach(f => fs.unlinkSync('traffic/' + f));
+
+            const html = \`<!DOCTYPE html>
+<html>
+<head>
+  <title>Traffic Stats</title>
+  <style>
+    body { font-family: sans-serif; max-width: 960px; margin: 40px auto; padding: 0 20px; }
+    h2 { margin-top: 40px; }
+    img { width: 100%; border: 1px solid #eee; border-radius: 8px; margin-bottom: 20px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 16px; }
+    th, td { padding: 10px; border: 1px solid #ddd; text-align: left; }
+    th { background: #f5f5f5; font-weight: 600; }
+    tr:nth-child(even) { background: #fafafa; }
+    tr:last-child td { font-weight: 600; background: #f0f0f0; }
+    .updated { color: #888; font-size: 13px; }
+  </style>
+</head>
+<body>
+  <h1>Repo Traffic</h1>
+  <p class="updated">Last updated: \${new Date().toUTCString()}</p>
+  <h2>Views</h2>
+  <img src="charts/views.png" alt="Views chart"/>
+  <h2>Clones</h2>
+  <img src="charts/clones.png" alt="Clones chart"/>
+</body>
+</html>\`;
+
+            fs.writeFileSync('index.html', html);
           "
 
-      - name: Commit
+      - name: Squash git history if older than 1 year
+        run: |
+          node -e "
+            const { execSync } = require('child_process');
+
+            // Count total commits
+            const count = parseInt(execSync('git rev-list --count HEAD').toString().trim());
+            console.log('Total commits: ' + count);
+
+            // Only squash if more than 365 commits
+            if (count <= 365) {
+              console.log('Less than 365 commits, skipping squash.');
+              process.exit(0);
+            }
+
+            // Find the commit hash from exactly 365 days ago
+            const cutoff = new Date();
+            cutoff.setFullYear(cutoff.getFullYear() - 1);
+            const cutoffStr = cutoff.toISOString().split('T')[0];
+            console.log('Squashing commits older than: ' + cutoffStr);
+
+            // Find the oldest commit within the last 365 days
+            const boundary = execSync(
+              'git log --after=\"' + cutoffStr + '\" --format=\"%H\" | tail -1'
+            ).toString().trim();
+
+            if (!boundary) {
+              console.log('No boundary commit found, skipping.');
+              process.exit(0);
+            }
+
+            console.log('Boundary commit: ' + boundary);
+
+            // Squash everything before boundary into one commit
+            execSync('git reset --soft ' + boundary + '^');
+            execSync('git commit -m \"chore: squash history older than 1 year (totals preserved in CSV)\"');
+            console.log('Squash complete.');
+          "
+
+      - name: Commit and push
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add traffic/
+          git add traffic/ charts/ index.html
           git diff --cached --quiet || git commit -m "chore: archive traffic $(date +%F)"
-          git push
+          git push --force-with-lease
