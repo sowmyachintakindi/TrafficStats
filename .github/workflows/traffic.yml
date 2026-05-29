@@ -29,7 +29,7 @@ jobs:
 
       - name: Fetch and save traffic
         env:
-          GH_TOKEN: ${{ secrets.TRAFFIC_TOKEN }}
+          GH_TOKEN: ${{ secrets.TOKEN }}
         run: |
           mkdir -p traffic charts
 
@@ -141,23 +141,6 @@ jobs:
               fs.writeFileSync(outfile, canvas.toBuffer('image/png'));
             }
 
-            function buildTableRows(rows, totals) {
-              const dataRows = rows.map(r => {
-                const cells = r.map((v, i) => {
-                  if (i === 0) return '<td style=\"padding:8px 12px;border-bottom:1px solid #eee\">' + v + '</td>';
-                  return '<td style=\"padding:8px 12px;border-bottom:1px solid #eee;text-align:right\">' + v + '</td>';
-                }).join('');
-                return '<tr>' + cells + '</tr>';
-              }).join('');
-
-              const totalCells = totals.map((v, i) => {
-                const style = 'padding:8px 12px;font-weight:600;background:#f5f5f5;' + (i === 0 ? '' : 'text-align:right');
-                return '<td style=\"' + style + '\">' + v + '</td>';
-              }).join('');
-
-              return dataRows + '<tr>' + totalCells + '</tr>';
-            }
-
             function buildTableHeader(slugs) {
               const row1 = '<tr style=\"background:#f5f5f5\">'
                 + '<th style=\"padding:8px 12px;border-bottom:1px solid #ddd\" rowspan=\"2\">Date</th>'
@@ -165,15 +148,30 @@ jobs:
                     '<th colspan=\"2\" style=\"padding:8px 12px;border-bottom:1px solid #ddd;border-left:2px solid #ddd;text-align:center\">' + s + '</th>'
                   ).join('')
                 + '</tr>';
-
               const row2 = '<tr style=\"background:#f5f5f5\">'
                 + slugs.map(() =>
                     '<th style=\"padding:8px 12px;border-bottom:2px solid #ddd;border-left:2px solid #ddd;text-align:right\">Count</th>'
                     + '<th style=\"padding:8px 12px;border-bottom:2px solid #ddd;text-align:right\">Uniques</th>'
                   ).join('')
                 + '</tr>';
-
               return row1 + row2;
+            }
+
+            function buildTableRows(rows, totals) {
+              const dataRows = rows.map(r => {
+                const cells = r.map((v, i) => {
+                  const align = i === 0 ? '' : 'text-align:right;';
+                  return '<td style=\"padding:8px 12px;border-bottom:1px solid #eee;' + align + '\">' + v + '</td>';
+                }).join('');
+                return '<tr>' + cells + '</tr>';
+              }).join('');
+
+              const totalCells = totals.map((v, i) => {
+                const align = i === 0 ? '' : 'text-align:right;';
+                return '<td style=\"padding:8px 12px;font-weight:600;background:#f0f0f0;' + align + '\">' + v + '</td>';
+              }).join('');
+
+              return dataRows + '<tr>' + totalCells + '</tr>';
             }
 
             const { rows: vRows, sortedDates: vDates, totals: vTotals } = buildCSV('views');
@@ -230,19 +228,19 @@ jobs:
               const cu = cTotals[base+1] || 0;
               return [
                 '<div style=\"border:1px solid #ddd;border-radius:8px;padding:16px 20px;flex:1;min-width:200px\">',
-                '<div style=\"font-weight:600;font-size:14px;margin-bottom:12px;color:#444\">' + slug + '</div>',
+                '<div style=\"font-weight:600;font-size:15px;margin-bottom:12px;color:#333\">' + slug + '</div>',
                 '<table style=\"width:100%;border-collapse:collapse;font-size:13px\">',
-                '<tr><td style=\"color:#888;padding:4px 0\">Total views</td><td style=\"text-align:right;font-weight:600\">' + vc + '</td></tr>',
-                '<tr><td style=\"color:#888;padding:4px 0\">Unique visitors</td><td style=\"text-align:right;font-weight:600\">' + vu + '</td></tr>',
-                '<tr><td style=\"color:#888;padding:4px 0\">Total clones</td><td style=\"text-align:right;font-weight:600\">' + cc + '</td></tr>',
-                '<tr><td style=\"color:#888;padding:4px 0\">Unique cloners</td><td style=\"text-align:right;font-weight:600\">' + cu + '</td></tr>',
+                '<tr><td style=\"color:#888;padding:5px 0\">Total views</td><td style=\"text-align:right;font-weight:600;font-size:15px\">' + vc + '</td></tr>',
+                '<tr><td style=\"color:#888;padding:5px 0\">Unique visitors</td><td style=\"text-align:right;font-weight:600;font-size:15px\">' + vu + '</td></tr>',
+                '<tr><td style=\"color:#888;padding:5px 0\">Total clones</td><td style=\"text-align:right;font-weight:600;font-size:15px\">' + cc + '</td></tr>',
+                '<tr><td style=\"color:#888;padding:5px 0\">Unique cloners</td><td style=\"text-align:right;font-weight:600;font-size:15px\">' + cu + '</td></tr>',
                 '</table>',
                 '</div>'
               ].join('');
             }).join('');
 
-            const viewsTableHeader = buildTableHeader(slugs);
-            const viewsTableRows   = buildTableRows(vRows, vTotals);
+            const viewsTableHeader  = buildTableHeader(slugs);
+            const viewsTableRows    = buildTableRows(vRows, vTotals);
             const clonesTableHeader = buildTableHeader(slugs);
             const clonesTableRows   = buildTableRows(cRows, cTotals);
 
@@ -252,88 +250,9 @@ jobs:
               '<head>',
               '<title>Traffic Stats</title>',
               '<style>',
-              'body { font-family: sans-serif; max-width: 960px; margin: 40px auto; padding: 0 20px; }',
-              'h2 { margin-top: 40px; margin-bottom: 12px; }',
-              'img { width: 100%; border: 1px solid #eee; border-radius: 8px; margin-bottom: 20px; }',
-              '.updated { color: #888; font-size: 13px; margin-bottom: 24px; }',
-              '.cards { display: flex; gap: 16px; flex-wrap: wrap; margin: 16px 0 32px; }',
-              '.table-wrap { overflow-x: auto; border: 1px solid #ddd; border-radius: 8px; margin-bottom: 32px; }',
-              'table { width: 100%; border-collapse: collapse; font-size: 13px; }',
-              'th { text-align: left; font-weight: 600; color: #444; }',
-              'tr:hover td { background: #fafafa; }',
-              '</style>',
-              '</head>',
-              '<body>',
-              '<h1>Repo Traffic</h1>',
-              '<p class=\"updated\">Last updated: ' + new Date().toUTCString() + '</p>',
-
-              '<h2>Totals</h2>',
-              '<div class=\"cards\">' + totalCards + '</div>',
-
-              '<h2>Views chart</h2>',
-              '<img src=\"charts/views.png\" alt=\"Views chart\"/>',
-
-              '<h2>Views table</h2>',
-              '<div class=\"table-wrap\">',
-              '<table>',
-              '<thead>' + viewsTableHeader + '</thead>',
-              '<tbody>' + viewsTableRows + '</tbody>',
-              '</table>',
-              '</div>',
-
-              '<h2>Clones chart</h2>',
-              '<img src=\"charts/clones.png\" alt=\"Clones chart\"/>',
-
-              '<h2>Clones table</h2>',
-              '<div class=\"table-wrap\">',
-              '<table>',
-              '<thead>' + clonesTableHeader + '</thead>',
-              '<tbody>' + clonesTableRows + '</tbody>',
-              '</table>',
-              '</div>',
-
-              '</body>',
-              '</html>'
-            ].join('\n'));
-          "
-
-      - name: Squash git history if older than 1 year
-        run: |
-          node -e "
-            const { execSync } = require('child_process');
-
-            const count = parseInt(execSync('git rev-list --count HEAD').toString().trim());
-            console.log('Total commits: ' + count);
-
-            if (count <= 365) {
-              console.log('Less than 365 commits, skipping squash.');
-              process.exit(0);
-            }
-
-            const cutoff = new Date();
-            cutoff.setFullYear(cutoff.getFullYear() - 1);
-            const cutoffStr = cutoff.toISOString().split('T')[0];
-            console.log('Squashing commits older than: ' + cutoffStr);
-
-            const boundary = execSync(
-              'git log --after=\"' + cutoffStr + '\" --format=\"%H\" | tail -1'
-            ).toString().trim();
-
-            if (!boundary) {
-              console.log('No boundary commit found, skipping.');
-              process.exit(0);
-            }
-
-            console.log('Boundary commit: ' + boundary);
-            execSync('git reset --soft ' + boundary + '^');
-            execSync('git commit -m \"chore: squash history older than 1 year (totals preserved in CSV)\"');
-            console.log('Squash complete.');
-          "
-
-      - name: Commit and push
-        run: |
-          git config user.name  "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add traffic/ charts/ index.html
-          git diff --cached --quiet || git commit -m "chore: archive traffic $(date +%F)"
-          git push --force-with-lease
+              'body{font-family:sans-serif;max-width:960px;margin:40px auto;padding:0 20px}',
+              'h2{margin-top:36px;margin-bottom:12px;font-size:18px;color:#333}',
+              'img{width:100%;border:1px solid #eee;border-radius:8px;margin-bottom:8px}',
+              '.updated{color:#888;font-size:13px;margin-bottom:28px}',
+              '.cards{display:flex;gap:16px;flex-wrap:wrap;margin:16px 0 32px}',
+              '.table-wrap{overflow-x:auto;border:1px solid #ddd;bord
