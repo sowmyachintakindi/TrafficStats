@@ -29,7 +29,7 @@ jobs:
 
       - name: Fetch and save traffic
         env:
-          GH_TOKEN: ${{ secrets.TOKEN }}
+          GH_TOKEN: ${{ secrets.TRAFFIC_TOKEN }}
         run: |
           mkdir -p traffic charts
 
@@ -98,20 +98,29 @@ jobs:
                 ];
               });
 
-              const totals = ['TOTAL', ...slugs.flatMap((slug, i) => {
+              const repoTotals = slugs.map((slug, i) => {
                 const base = 1 + i * 2;
-                const tc = rows.reduce((s, r) => s + (parseInt(r[base])   || 0), 0);
-                const tu = rows.reduce((s, r) => s + (parseInt(r[base+1]) || 0), 0);
-                return [tc, tu];
-              })];
+                return {
+                  count:   rows.reduce((s, r) => s + (parseInt(r[base])   || 0), 0),
+                  uniques: rows.reduce((s, r) => s + (parseInt(r[base+1]) || 0), 0)
+                };
+              });
 
-              const content = header1.join(',') + '\n'
-                + header2.join(',') + '\n'
-                + rows.map(r => r.join(',')).join('\n') + '\n'
-                + totals.join(',') + '\n';
+              const grandCount   = repoTotals.reduce((s, t) => s + t.count,   0);
+              const grandUniques = repoTotals.reduce((s, t) => s + t.uniques, 0);
 
-              fs.writeFileSync(filename, content);
-              return { rows, sortedDates };
+              const header1 = ['date', ...slugs.flatMap(s => [s, ''])];
+              const header2 = ['date', ...slugs.flatMap(() => ['count', 'uniques'])];
+              const totalsRow = ['TOTAL', ...repoTotals.flatMap(t => [t.count, t.uniques])];
+
+              fs.writeFileSync(filename,
+                header1.join(',') + '\n' +
+                header2.join(',') + '\n' +
+                rows.map(r => r.join(',')).join('\n') + '\n' +
+                totalsRow.join(',') + '\n'
+              );
+
+              return { rows, sortedDates, repoTotals, grandCount, grandUniques };
             }
 
             function generateChart(title, labels, datasets, outfile) {
@@ -187,67 +196,60 @@ jobs:
             const files = fs.readdirSync('traffic').filter(f => f.endsWith('_raw.json'));
             files.forEach(f => fs.unlinkSync('traffic/' + f));
 
+            const repoCards = slugs.map((slug, i) => [
+              '<div style=\"border:1px solid #ddd;border-radius:8px;padding:16px;flex:1;min-width:180px;box-sizing:border-box\">',
+              '<div style=\"font-size:11px;color:#666;word-break:break-all;margin-bottom:10px;font-weight:600\">' + slug + '</div>',
+              '<table style=\"width:100%;border-collapse:collapse;font-size:13px\">',
+              '<tr><td style=\"color:#888;padding:4px 0\">Views</td><td style=\"text-align:right;font-weight:700;font-size:16px;color:#6366f1\">' + vData.repoTotals[i].count + '</td></tr>',
+              '<tr><td style=\"color:#888;padding:4px 0\">Unique visitors</td><td style=\"text-align:right;font-weight:700;font-size:16px;color:#6366f1\">' + vData.repoTotals[i].uniques + '</td></tr>',
+              '<tr><td style=\"color:#888;padding:4px 0\">Clones</td><td style=\"text-align:right;font-weight:700;font-size:16px;color:#14b8a6\">' + cData.repoTotals[i].count + '</td></tr>',
+              '<tr><td style=\"color:#888;padding:4px 0\">Unique cloners</td><td style=\"text-align:right;font-weight:700;font-size:16px;color:#14b8a6\">' + cData.repoTotals[i].uniques + '</td></tr>',
+              '</table>',
+              '</div>'
+            ].join('')).join('');
+
+            const grandCard = [
+              '<div style=\"border:2px solid #6366f1;border-radius:8px;padding:16px;min-width:180px;box-sizing:border-box;background:#f8f7ff\">',
+              '<div style=\"font-size:13px;font-weight:700;color:#6366f1;margin-bottom:10px\">All repos combined</div>',
+              '<table style=\"width:100%;border-collapse:collapse;font-size:13px\">',
+              '<tr><td style=\"color:#888;padding:4px 0\">Total views</td><td style=\"text-align:right;font-weight:700;font-size:18px;color:#6366f1\">' + vData.grandCount + '</td></tr>',
+              '<tr><td style=\"color:#888;padding:4px 0\">Total unique visitors</td><td style=\"text-align:right;font-weight:700;font-size:18px;color:#6366f1\">' + vData.grandUniques + '</td></tr>',
+              '<tr><td style=\"color:#888;padding:4px 0\">Total clones</td><td style=\"text-align:right;font-weight:700;font-size:18px;color:#14b8a6\">' + cData.grandCount + '</td></tr>',
+              '<tr><td style=\"color:#888;padding:4px 0\">Total unique cloners</td><td style=\"text-align:right;font-weight:700;font-size:18px;color:#14b8a6\">' + cData.grandUniques + '</td></tr>',
+              '</table>',
+              '</div>'
+            ].join('');
+
             fs.writeFileSync('index.html', [
               '<!DOCTYPE html>',
               '<html>',
               '<head>',
               '<title>Traffic Stats</title>',
               '<style>',
-              'body { font-family: sans-serif; max-width: 960px; margin: 40px auto; padding: 0 20px; }',
-              'h2 { margin-top: 40px; }',
-              'img { width: 100%; border: 1px solid #eee; border-radius: 8px; margin-bottom: 20px; }',
-              'table { width: 100%; border-collapse: collapse; margin-top: 16px; }',
-              'th, td { padding: 10px; border: 1px solid #ddd; text-align: left; }',
-              'th { background: #f5f5f5; font-weight: 600; }',
-              'tr:nth-child(even) { background: #fafafa; }',
-              'tr:last-child td { font-weight: 600; background: #f0f0f0; }',
-              '.updated { color: #888; font-size: 13px; }',
+              'body{font-family:sans-serif;max-width:960px;margin:40px auto;padding:0 20px;color:#222}',
+              'h1{font-size:24px;margin-bottom:4px}',
+              'h2{font-size:18px;margin-top:36px;margin-bottom:12px;color:#333;border-bottom:1px solid #eee;padding-bottom:6px}',
+              '.updated{color:#888;font-size:12px;margin-bottom:28px}',
+              '.cards{display:flex;gap:14px;flex-wrap:wrap;margin:16px 0 32px;align-items:stretch}',
+              'img{width:100%;border:1px solid #eee;border-radius:8px;margin-bottom:24px}',
               '</style>',
               '</head>',
               '<body>',
               '<h1>Repo Traffic</h1>',
               '<p class=\"updated\">Last updated: ' + new Date().toUTCString() + '</p>',
-              '<h2>Views</h2>',
+              '<h2>Combined totals</h2>',
+              '<div class=\"cards\">' + grandCard + '</div>',
+              '<h2>Per repo totals</h2>',
+              '<div class=\"cards\">' + repoCards + '</div>',
+              '<h2>Views chart</h2>',
               '<img src=\"charts/views.png\" alt=\"Views chart\"/>',
-              '<h2>Clones</h2>',
+              '<h2>Clones chart</h2>',
               '<img src=\"charts/clones.png\" alt=\"Clones chart\"/>',
               '</body>',
               '</html>'
             ].join('\n'));
-          "
 
-      - name: Squash git history if older than 1 year
-        run: |
-          node -e "
-            const { execSync } = require('child_process');
-
-            const count = parseInt(execSync('git rev-list --count HEAD').toString().trim());
-            console.log('Total commits: ' + count);
-
-            if (count <= 365) {
-              console.log('Less than 365 commits, skipping squash.');
-              process.exit(0);
-            }
-
-            const cutoff = new Date();
-            cutoff.setFullYear(cutoff.getFullYear() - 1);
-            const cutoffStr = cutoff.toISOString().split('T')[0];
-            console.log('Squashing commits older than: ' + cutoffStr);
-
-            const boundary = execSync(
-              'git log --after=\"' + cutoffStr + '\" --format=\"%H\" | tail -1'
-            ).toString().trim();
-
-            if (!boundary) {
-              console.log('No boundary commit found, skipping.');
-              process.exit(0);
-            }
-
-            console.log('Boundary commit: ' + boundary);
-
-            execSync('git reset --soft ' + boundary + '^');
-            execSync('git commit -m \"chore: squash history older than 1 year (totals preserved in CSV)\"');
-            console.log('Squash complete.');
+            console.log('Done.');
           "
 
       - name: Commit and push
