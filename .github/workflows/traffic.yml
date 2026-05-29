@@ -37,12 +37,12 @@ jobs:
 
           for REPO in $REPOS; do
             SLUG=$(echo $REPO | cut -d'/' -f2)
-            curl -s -H "Authorization: Bearer $GH_TOKEN" \
-              "https://api.github.com/repos/$REPO/traffic/views?per=day" \
-              > traffic/${SLUG}_views_raw.json
-            curl -s -H "Authorization: Bearer $GH_TOKEN" \
-              "https://api.github.com/repos/$REPO/traffic/clones?per=day" \
-              > traffic/${SLUG}_clones_raw.json
+            VIEWS=$(curl -s -H "Authorization: Bearer $GH_TOKEN" \
+              "https://api.github.com/repos/$REPO/traffic/views?per=day")
+            CLONES=$(curl -s -H "Authorization: Bearer $GH_TOKEN" \
+              "https://api.github.com/repos/$REPO/traffic/clones?per=day")
+            echo "$VIEWS"  > traffic/${SLUG}_views_raw.json
+            echo "$CLONES" > traffic/${SLUG}_clones_raw.json
           done
 
       - name: Process and generate
