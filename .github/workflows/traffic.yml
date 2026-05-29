@@ -27,13 +27,13 @@ jobs:
       - name: Install dependencies
         run: npm install canvas chart.js
 
-      - name: Fetch traffic
+      - name: Fetch and save traffic
         env:
-          GH_TOKEN: ${{ secrets.TRAFFIC_TOKEN }}
+          GH_TOKEN: ${{ secrets.TOKEN }}
         run: |
           mkdir -p traffic charts
 
-           REPOS="sowmyachintakindi/PerfMLOps_Zero_Human_ML_Performance_Framework sowmyachintakindi/API_onPrem_vs_AWSEC2_vs_AWSLambda sowmyachintakindi/Energy_Proportional_AI_Load_Balancing sowmyachintakindi/Elastic_ML_Training_Infrastructure"
+          REPOS="sowmyachintakindi/PerfMLOps_Zero_Human_ML_Performance_Framework sowmyachintakindi/TrafficStats"
 
           for REPO in $REPOS; do
             SLUG=$(echo $REPO | cut -d'/' -f2)
@@ -45,17 +45,13 @@ jobs:
             echo "$CLONES" > traffic/${SLUG}_clones_raw.json
           done
 
-      - name: Process and generate
-        run: |
           node -e "
             const fs = require('fs');
+            const { createCanvas } = require('canvas');
+            const { Chart } = require('chart.js/auto');
 
-            const repos = [
-              'sowmyachintakindi/PerfMLOps_Zero_Human_ML_Performance_Framework',
-              'sowmyachintakindi/TrafficStats'
-            ];
+            const repos = 'sowmyachintakindi/PerfMLOps_Zero_Human_ML_Performance_Framework sowmyachintakindi/TrafficStats'.split(' ');
             const slugs = repos.map(r => r.split('/')[1]);
-            const shortNames = slugs.map(s => s.length > 18 ? s.substring(0, 18) + '...' : s);
             const COLORS = ['#6366f1','#14b8a6','#f59e0b','#ef4444'];
 
             function buildCSV(type) {
@@ -80,9 +76,13 @@ jobs:
                   if (l.startsWith('TOTAL')) return;
                   const parts = l.split(',');
                   const date = parts[0];
-                  if (date) { allDates.add(date); existingRows[date] = parts; }
+                  allDates.add(date);
+                  existingRows[date] = parts;
                 });
               }
+
+              const header1 = ['date', ...slugs.flatMap(s => [s, ''])];
+              const header2 = ['date', ...slugs.flatMap(() => ['count', 'uniques'])];
 
               const sortedDates = [...allDates].filter(d => d).sort();
               const rows = sortedDates.map(date => {
@@ -93,113 +93,99 @@ jobs:
                     const newData = repoData[slug][date];
                     if (newData) return [newData.count, newData.uniques];
                     const base = 1 + i * 2;
-                    return [existing[base] || 0, existing[base+1] || 0];
+                    return [existing[base] || 0, existing[base + 1] || 0];
                   })
                 ];
               });
 
-              const repoTotals = slugs.map((slug, i) => {
+              const totals = ['TOTAL', ...slugs.flatMap((slug, i) => {
                 const base = 1 + i * 2;
-                return {
-                  count:   rows.reduce((s, r) => s + (parseInt(r[base])   || 0), 0),
-                  uniques: rows.reduce((s, r) => s + (parseInt(r[base+1]) || 0), 0)
-                };
-              });
+                const tc = rows.reduce((s, r) => s + (parseInt(r[base])   || 0), 0);
+                const tu = rows.reduce((s, r) => s + (parseInt(r[base+1]) || 0), 0);
+                return [tc, tu];
+              })];
 
-              const grandCount   = repoTotals.reduce((s, t) => s + t.count,   0);
-              const grandUniques = repoTotals.reduce((s, t) => s + t.uniques, 0);
+              const content = header1.join(',') + '\n'
+                + header2.join(',') + '\n'
+                + rows.map(r => r.join(',')).join('\n') + '\n'
+                + totals.join(',') + '\n';
 
-              const header1 = ['date', ...slugs.flatMap(s => [s, ''])];
-              const header2 = ['date', ...slugs.flatMap(() => ['count', 'uniques'])];
-              const totalsRow = ['TOTAL', ...repoTotals.flatMap(t => [t.count, t.uniques])];
-
-              fs.writeFileSync(filename,
-                header1.join(',') + '\n' +
-                header2.join(',') + '\n' +
-                rows.map(r => r.join(',')).join('\n') + '\n' +
-                totalsRow.join(',') + '\n'
-              );
-
-              return { rows, sortedDates, repoTotals, grandCount, grandUniques };
+              fs.writeFileSync(filename, content);
+              return { rows, sortedDates };
             }
 
             function generateChart(title, labels, datasets, outfile) {
-              const { createCanvas } = require('canvas');
-              const { Chart } = require('chart.js/auto');
-              const canvas = createCanvas(900, 400);
+              const width = 900, height = 400;
+              const canvas = createCanvas(width, height);
               const ctx = canvas.getContext('2d');
               ctx.fillStyle = '#ffffff';
-              ctx.fillRect(0, 0, 900, 400);
+              ctx.fillRect(0, 0, width, height);
+
               new Chart(ctx, {
                 type: 'line',
                 data: { labels, datasets },
                 options: {
-                  responsive: false, animation: false,
+                  responsive: false,
+                  animation: false,
                   plugins: {
                     title: { display: true, text: title, font: { size: 16 } },
                     legend: { position: 'bottom' }
                   },
-                  scales: { x: { ticks: { maxRotation: 45 } }, y: { beginAtZero: true } }
+                  scales: {
+                    x: { ticks: { maxRotation: 45 } },
+                    y: { beginAtZero: true }
+                  }
                 }
               });
+
               fs.writeFileSync(outfile, canvas.toBuffer('image/png'));
             }
 
-            const vData = buildCSV('views');
-            const cData = buildCSV('clones');
+            const { rows: vRows, sortedDates: vDates } = buildCSV('views');
+            const { rows: cRows, sortedDates: cDates } = buildCSV('clones');
 
-            generateChart('Views per day', vData.sortedDates,
+            generateChart('Views per day', vDates,
               slugs.flatMap((slug, i) => [
-                { label: shortNames[i] + ' views',
-                  data: vData.rows.map(r => parseInt(r[1 + i*2]) || 0),
-                  borderColor: COLORS[i*2], backgroundColor: COLORS[i*2] + '22',
-                  tension: 0.3, fill: true },
-                { label: shortNames[i] + ' uniques',
-                  data: vData.rows.map(r => parseInt(r[2 + i*2]) || 0),
-                  borderColor: COLORS[i*2+1], borderDash: [5,5],
-                  tension: 0.3, fill: false }
-              ]), 'charts/views.png'
+                {
+                  label: slug + ' views',
+                  data: vRows.map(r => parseInt(r[1 + i * 2]) || 0),
+                  borderColor: COLORS[i * 2],
+                  backgroundColor: COLORS[i * 2] + '22',
+                  tension: 0.3, fill: true
+                },
+                {
+                  label: slug + ' uniques',
+                  data: vRows.map(r => parseInt(r[2 + i * 2]) || 0),
+                  borderColor: COLORS[i * 2 + 1],
+                  borderDash: [5, 5],
+                  tension: 0.3, fill: false
+                }
+              ]),
+              'charts/views.png'
             );
 
-            generateChart('Clones per day', cData.sortedDates,
+            generateChart('Clones per day', cDates,
               slugs.flatMap((slug, i) => [
-                { label: shortNames[i] + ' clones',
-                  data: cData.rows.map(r => parseInt(r[1 + i*2]) || 0),
-                  borderColor: COLORS[i*2], backgroundColor: COLORS[i*2] + '22',
-                  tension: 0.3, fill: true },
-                { label: shortNames[i] + ' unique cloners',
-                  data: cData.rows.map(r => parseInt(r[2 + i*2]) || 0),
-                  borderColor: COLORS[i*2+1], borderDash: [5,5],
-                  tension: 0.3, fill: false }
-              ]), 'charts/clones.png'
+                {
+                  label: slug + ' clones',
+                  data: cRows.map(r => parseInt(r[1 + i * 2]) || 0),
+                  borderColor: COLORS[i * 2],
+                  backgroundColor: COLORS[i * 2] + '22',
+                  tension: 0.3, fill: true
+                },
+                {
+                  label: slug + ' unique cloners',
+                  data: cRows.map(r => parseInt(r[2 + i * 2]) || 0),
+                  borderColor: COLORS[i * 2 + 1],
+                  borderDash: [5, 5],
+                  tension: 0.3, fill: false
+                }
+              ]),
+              'charts/clones.png'
             );
 
-            fs.readdirSync('traffic').filter(f => f.endsWith('_raw.json'))
-              .forEach(f => fs.unlinkSync('traffic/' + f));
-
-            const repoCards = slugs.map((slug, i) => [
-              '<div style=\"border:1px solid #ddd;border-radius:8px;padding:16px;flex:1;min-width:180px;box-sizing:border-box\">',
-              '<div style=\"font-size:11px;color:#666;word-break:break-all;margin-bottom:10px;font-weight:600\">' + slug + '</div>',
-              '<table style=\"width:100%;border-collapse:collapse;font-size:13px\">',
-              '<tr><td style=\"color:#888;padding:4px 0\">Views</td><td style=\"text-align:right;font-weight:700;font-size:16px;color:#6366f1\">' + vData.repoTotals[i].count + '</td></tr>',
-              '<tr><td style=\"color:#888;padding:4px 0\">Unique visitors</td><td style=\"text-align:right;font-weight:700;font-size:16px;color:#6366f1\">' + vData.repoTotals[i].uniques + '</td></tr>',
-              '<tr><td style=\"color:#888;padding:4px 0\">Clones</td><td style=\"text-align:right;font-weight:700;font-size:16px;color:#14b8a6\">' + cData.repoTotals[i].count + '</td></tr>',
-              '<tr><td style=\"color:#888;padding:4px 0\">Unique cloners</td><td style=\"text-align:right;font-weight:700;font-size:16px;color:#14b8a6\">' + cData.repoTotals[i].uniques + '</td></tr>',
-              '</table>',
-              '</div>'
-            ].join('')).join('');
-
-            const grandCard = [
-              '<div style=\"border:2px solid #6366f1;border-radius:8px;padding:16px;min-width:180px;box-sizing:border-box;background:#f8f7ff\">',
-              '<div style=\"font-size:13px;font-weight:700;color:#6366f1;margin-bottom:10px\">All repos combined</div>',
-              '<table style=\"width:100%;border-collapse:collapse;font-size:13px\">',
-              '<tr><td style=\"color:#888;padding:4px 0\">Total views</td><td style=\"text-align:right;font-weight:700;font-size:18px;color:#6366f1\">' + vData.grandCount + '</td></tr>',
-              '<tr><td style=\"color:#888;padding:4px 0\">Total unique visitors</td><td style=\"text-align:right;font-weight:700;font-size:18px;color:#6366f1\">' + vData.grandUniques + '</td></tr>',
-              '<tr><td style=\"color:#888;padding:4px 0\">Total clones</td><td style=\"text-align:right;font-weight:700;font-size:18px;color:#14b8a6\">' + cData.grandCount + '</td></tr>',
-              '<tr><td style=\"color:#888;padding:4px 0\">Total unique cloners</td><td style=\"text-align:right;font-weight:700;font-size:18px;color:#14b8a6\">' + cData.grandUniques + '</td></tr>',
-              '</table>',
-              '</div>'
-            ].join('');
+            const files = fs.readdirSync('traffic').filter(f => f.endsWith('_raw.json'));
+            files.forEach(f => fs.unlinkSync('traffic/' + f));
 
             fs.writeFileSync('index.html', [
               '<!DOCTYPE html>',
@@ -207,50 +193,62 @@ jobs:
               '<head>',
               '<title>Traffic Stats</title>',
               '<style>',
-              'body{font-family:sans-serif;max-width:960px;margin:40px auto;padding:0 20px;color:#222}',
-              'h1{font-size:24px;margin-bottom:4px}',
-              'h2{font-size:18px;margin-top:36px;margin-bottom:12px;color:#333;border-bottom:1px solid #eee;padding-bottom:6px}',
-              '.updated{color:#888;font-size:12px;margin-bottom:28px}',
-              '.cards{display:flex;gap:14px;flex-wrap:wrap;margin:16px 0 32px;align-items:stretch}',
-              'img{width:100%;border:1px solid #eee;border-radius:8px;margin-bottom:24px}',
+              'body { font-family: sans-serif; max-width: 960px; margin: 40px auto; padding: 0 20px; }',
+              'h2 { margin-top: 40px; }',
+              'img { width: 100%; border: 1px solid #eee; border-radius: 8px; margin-bottom: 20px; }',
+              'table { width: 100%; border-collapse: collapse; margin-top: 16px; }',
+              'th, td { padding: 10px; border: 1px solid #ddd; text-align: left; }',
+              'th { background: #f5f5f5; font-weight: 600; }',
+              'tr:nth-child(even) { background: #fafafa; }',
+              'tr:last-child td { font-weight: 600; background: #f0f0f0; }',
+              '.updated { color: #888; font-size: 13px; }',
               '</style>',
               '</head>',
               '<body>',
               '<h1>Repo Traffic</h1>',
               '<p class=\"updated\">Last updated: ' + new Date().toUTCString() + '</p>',
-              '<h2>Combined totals</h2>',
-              '<div class=\"cards\">' + grandCard + '</div>',
-              '<h2>Per repo totals</h2>',
-              '<div class=\"cards\">' + repoCards + '</div>',
-              '<h2>Views chart</h2>',
+              '<h2>Views</h2>',
               '<img src=\"charts/views.png\" alt=\"Views chart\"/>',
-              '<h2>Clones chart</h2>',
+              '<h2>Clones</h2>',
               '<img src=\"charts/clones.png\" alt=\"Clones chart\"/>',
               '</body>',
               '</html>'
             ].join('\n'));
-
-            console.log('Done.');
           "
 
       - name: Squash git history if older than 1 year
         run: |
-          COUNT=$(git rev-list --count HEAD)
-          echo "Total commits: $COUNT"
-          if [ "$COUNT" -le 365 ]; then
-            echo "Less than 365 commits, skipping squash."
-            exit 0
-          fi
-          CUTOFF=$(date -d '1 year ago' +%Y-%m-%d)
-          BOUNDARY=$(git log --after="$CUTOFF" --format="%H" | tail -1)
-          if [ -z "$BOUNDARY" ]; then
-            echo "No boundary found, skipping."
-            exit 0
-          fi
-          echo "Squashing commits older than $CUTOFF"
-          git reset --soft "${BOUNDARY}^"
-          git commit -m "chore: squash history older than 1 year (totals preserved in CSV)"
-          echo "Squash complete."
+          node -e "
+            const { execSync } = require('child_process');
+
+            const count = parseInt(execSync('git rev-list --count HEAD').toString().trim());
+            console.log('Total commits: ' + count);
+
+            if (count <= 365) {
+              console.log('Less than 365 commits, skipping squash.');
+              process.exit(0);
+            }
+
+            const cutoff = new Date();
+            cutoff.setFullYear(cutoff.getFullYear() - 1);
+            const cutoffStr = cutoff.toISOString().split('T')[0];
+            console.log('Squashing commits older than: ' + cutoffStr);
+
+            const boundary = execSync(
+              'git log --after=\"' + cutoffStr + '\" --format=\"%H\" | tail -1'
+            ).toString().trim();
+
+            if (!boundary) {
+              console.log('No boundary commit found, skipping.');
+              process.exit(0);
+            }
+
+            console.log('Boundary commit: ' + boundary);
+
+            execSync('git reset --soft ' + boundary + '^');
+            execSync('git commit -m \"chore: squash history older than 1 year (totals preserved in CSV)\"');
+            console.log('Squash complete.');
+          "
 
       - name: Commit and push
         run: |
