@@ -16,8 +16,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -52,6 +50,7 @@ jobs:
 
             const repos = 'sowmyachintakindi/PerfMLOps_Zero_Human_ML_Performance_Framework sowmyachintakindi/TrafficStats'.split(' ');
             const slugs = repos.map(r => r.split('/')[1]);
+
             const COLORS = ['#6366f1','#14b8a6','#f59e0b','#ef4444'];
 
             function buildCSV(type) {
@@ -98,7 +97,6 @@ jobs:
                 ];
               });
 
-              // Totals — always recalculated from all rows so squashing never affects them
               const totals = ['TOTAL', ...slugs.flatMap((slug, i) => {
                 const base = 1 + i * 2;
                 const tc = rows.reduce((s, r) => s + (parseInt(r[base])   || 0), 0);
@@ -145,6 +143,7 @@ jobs:
             const { rows: vRows, sortedDates: vDates } = buildCSV('views');
             const { rows: cRows, sortedDates: cDates } = buildCSV('clones');
 
+            // Views chart
             generateChart('Views per day', vDates,
               slugs.flatMap((slug, i) => [
                 {
@@ -165,6 +164,7 @@ jobs:
               'charts/views.png'
             );
 
+            // Clones chart
             generateChart('Clones per day', cDates,
               slugs.flatMap((slug, i) => [
                 {
@@ -185,81 +185,45 @@ jobs:
               'charts/clones.png'
             );
 
+            // Cleanup raw files
             const files = fs.readdirSync('traffic').filter(f => f.endsWith('_raw.json'));
             files.forEach(f => fs.unlinkSync('traffic/' + f));
 
+            // Generate GitHub Pages index.html
             const html = \`<!DOCTYPE html>
-<html>
-<head>
-  <title>Traffic Stats</title>
-  <style>
-    body { font-family: sans-serif; max-width: 960px; margin: 40px auto; padding: 0 20px; }
-    h2 { margin-top: 40px; }
-    img { width: 100%; border: 1px solid #eee; border-radius: 8px; margin-bottom: 20px; }
-    table { width: 100%; border-collapse: collapse; margin-top: 16px; }
-    th, td { padding: 10px; border: 1px solid #ddd; text-align: left; }
-    th { background: #f5f5f5; font-weight: 600; }
-    tr:nth-child(even) { background: #fafafa; }
-    tr:last-child td { font-weight: 600; background: #f0f0f0; }
-    .updated { color: #888; font-size: 13px; }
-  </style>
-</head>
-<body>
-  <h1>Repo Traffic</h1>
-  <p class="updated">Last updated: \${new Date().toUTCString()}</p>
-  <h2>Views</h2>
-  <img src="charts/views.png" alt="Views chart"/>
-  <h2>Clones</h2>
-  <img src="charts/clones.png" alt="Clones chart"/>
-</body>
-</html>\`;
+            <html>
+            <head>
+              <title>Traffic Stats</title>
+              <style>
+                body { font-family: sans-serif; max-width: 960px; margin: 40px auto; padding: 0 20px; }
+                h2 { margin-top: 40px; }
+                img { width: 100%; border: 1px solid #eee; border-radius: 8px; margin-bottom: 20px; }
+                table { width: 100%; border-collapse: collapse; margin-top: 16px; }
+                th, td { padding: 10px; border: 1px solid #ddd; text-align: left; }
+                th { background: #f5f5f5; font-weight: 600; }
+                tr:nth-child(even) { background: #fafafa; }
+                .updated { color: #888; font-size: 13px; }
+              </style>
+            </head>
+            <body>
+              <h1>📊 Repo Traffic</h1>
+              <p class="updated">Last updated: \${new Date().toUTCString()}</p>
+
+              <h2>Views</h2>
+              <img src="charts/views.png" alt="Views chart"/>
+
+              <h2>Clones</h2>
+              <img src="charts/clones.png" alt="Clones chart"/>
+            </body>
+            </html>\`;
 
             fs.writeFileSync('index.html', html);
           "
 
-      - name: Squash git history if older than 1 year
-        run: |
-          node -e "
-            const { execSync } = require('child_process');
-
-            // Count total commits
-            const count = parseInt(execSync('git rev-list --count HEAD').toString().trim());
-            console.log('Total commits: ' + count);
-
-            // Only squash if more than 365 commits
-            if (count <= 365) {
-              console.log('Less than 365 commits, skipping squash.');
-              process.exit(0);
-            }
-
-            // Find the commit hash from exactly 365 days ago
-            const cutoff = new Date();
-            cutoff.setFullYear(cutoff.getFullYear() - 1);
-            const cutoffStr = cutoff.toISOString().split('T')[0];
-            console.log('Squashing commits older than: ' + cutoffStr);
-
-            // Find the oldest commit within the last 365 days
-            const boundary = execSync(
-              'git log --after=\"' + cutoffStr + '\" --format=\"%H\" | tail -1'
-            ).toString().trim();
-
-            if (!boundary) {
-              console.log('No boundary commit found, skipping.');
-              process.exit(0);
-            }
-
-            console.log('Boundary commit: ' + boundary);
-
-            // Squash everything before boundary into one commit
-            execSync('git reset --soft ' + boundary + '^');
-            execSync('git commit -m \"chore: squash history older than 1 year (totals preserved in CSV)\"');
-            console.log('Squash complete.');
-          "
-
-      - name: Commit and push
+      - name: Commit
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add traffic/ charts/ index.html
           git diff --cached --quiet || git commit -m "chore: archive traffic $(date +%F)"
-          git push --force-with-lease
+          git push
