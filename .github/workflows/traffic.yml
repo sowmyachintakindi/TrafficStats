@@ -150,6 +150,8 @@ jobs:
 
             const { rows: vRows, sortedDates: vDates } = buildCSV('views');
             const { rows: cRows, sortedDates: cDates } = buildCSV('clones');
+            const vData = buildCSV('views');
+            const cData = buildCSV('clones');
 
             generateChart('Views per day', vDates,
               slugs.flatMap((slug, i) => [
