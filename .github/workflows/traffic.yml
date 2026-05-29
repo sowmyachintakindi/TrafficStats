@@ -165,8 +165,7 @@ jobs:
             );
 
             // Clones chart
-            generateChart('Clones per day', cDates,
-              slugs.flatMap((slug, i) => [
+            generateChart('Clones per day', cDates,slugs.flatMap((slug, i) => [
                 {
                   label: slug + ' clones',
                   data: cRows.map(r => parseInt(r[1 + i * 2]) || 0),
