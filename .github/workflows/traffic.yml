@@ -111,7 +111,7 @@ jobs:
                 + totals.join(',') + '\n';
 
               fs.writeFileSync(filename, content);
-              return { rows, sortedDates };
+              return { rows, sortedDates, totals };
             }
 
             function generateChart(title, labels, datasets, outfile) {
@@ -141,8 +141,43 @@ jobs:
               fs.writeFileSync(outfile, canvas.toBuffer('image/png'));
             }
 
-            const { rows: vRows, sortedDates: vDates } = buildCSV('views');
-            const { rows: cRows, sortedDates: cDates } = buildCSV('clones');
+            function buildTableRows(rows, totals) {
+              const dataRows = rows.map(r => {
+                const cells = r.map((v, i) => {
+                  if (i === 0) return '<td style=\"padding:8px 12px;border-bottom:1px solid #eee\">' + v + '</td>';
+                  return '<td style=\"padding:8px 12px;border-bottom:1px solid #eee;text-align:right\">' + v + '</td>';
+                }).join('');
+                return '<tr>' + cells + '</tr>';
+              }).join('');
+
+              const totalCells = totals.map((v, i) => {
+                const style = 'padding:8px 12px;font-weight:600;background:#f5f5f5;' + (i === 0 ? '' : 'text-align:right');
+                return '<td style=\"' + style + '\">' + v + '</td>';
+              }).join('');
+
+              return dataRows + '<tr>' + totalCells + '</tr>';
+            }
+
+            function buildTableHeader(slugs) {
+              const row1 = '<tr style=\"background:#f5f5f5\">'
+                + '<th style=\"padding:8px 12px;border-bottom:1px solid #ddd\" rowspan=\"2\">Date</th>'
+                + slugs.map(s =>
+                    '<th colspan=\"2\" style=\"padding:8px 12px;border-bottom:1px solid #ddd;border-left:2px solid #ddd;text-align:center\">' + s + '</th>'
+                  ).join('')
+                + '</tr>';
+
+              const row2 = '<tr style=\"background:#f5f5f5\">'
+                + slugs.map(() =>
+                    '<th style=\"padding:8px 12px;border-bottom:2px solid #ddd;border-left:2px solid #ddd;text-align:right\">Count</th>'
+                    + '<th style=\"padding:8px 12px;border-bottom:2px solid #ddd;text-align:right\">Uniques</th>'
+                  ).join('')
+                + '</tr>';
+
+              return row1 + row2;
+            }
+
+            const { rows: vRows, sortedDates: vDates, totals: vTotals } = buildCSV('views');
+            const { rows: cRows, sortedDates: cDates, totals: cTotals } = buildCSV('clones');
 
             generateChart('Views per day', vDates,
               slugs.flatMap((slug, i) => [
@@ -187,6 +222,30 @@ jobs:
             const files = fs.readdirSync('traffic').filter(f => f.endsWith('_raw.json'));
             files.forEach(f => fs.unlinkSync('traffic/' + f));
 
+            const totalCards = slugs.map((slug, i) => {
+              const base = 1 + i * 2;
+              const vc = vTotals[base]   || 0;
+              const vu = vTotals[base+1] || 0;
+              const cc = cTotals[base]   || 0;
+              const cu = cTotals[base+1] || 0;
+              return [
+                '<div style=\"border:1px solid #ddd;border-radius:8px;padding:16px 20px;flex:1;min-width:200px\">',
+                '<div style=\"font-weight:600;font-size:14px;margin-bottom:12px;color:#444\">' + slug + '</div>',
+                '<table style=\"width:100%;border-collapse:collapse;font-size:13px\">',
+                '<tr><td style=\"color:#888;padding:4px 0\">Total views</td><td style=\"text-align:right;font-weight:600\">' + vc + '</td></tr>',
+                '<tr><td style=\"color:#888;padding:4px 0\">Unique visitors</td><td style=\"text-align:right;font-weight:600\">' + vu + '</td></tr>',
+                '<tr><td style=\"color:#888;padding:4px 0\">Total clones</td><td style=\"text-align:right;font-weight:600\">' + cc + '</td></tr>',
+                '<tr><td style=\"color:#888;padding:4px 0\">Unique cloners</td><td style=\"text-align:right;font-weight:600\">' + cu + '</td></tr>',
+                '</table>',
+                '</div>'
+              ].join('');
+            }).join('');
+
+            const viewsTableHeader = buildTableHeader(slugs);
+            const viewsTableRows   = buildTableRows(vRows, vTotals);
+            const clonesTableHeader = buildTableHeader(slugs);
+            const clonesTableRows   = buildTableRows(cRows, cTotals);
+
             fs.writeFileSync('index.html', [
               '<!DOCTYPE html>',
               '<html>',
@@ -194,23 +253,45 @@ jobs:
               '<title>Traffic Stats</title>',
               '<style>',
               'body { font-family: sans-serif; max-width: 960px; margin: 40px auto; padding: 0 20px; }',
-              'h2 { margin-top: 40px; }',
+              'h2 { margin-top: 40px; margin-bottom: 12px; }',
               'img { width: 100%; border: 1px solid #eee; border-radius: 8px; margin-bottom: 20px; }',
-              'table { width: 100%; border-collapse: collapse; margin-top: 16px; }',
-              'th, td { padding: 10px; border: 1px solid #ddd; text-align: left; }',
-              'th { background: #f5f5f5; font-weight: 600; }',
-              'tr:nth-child(even) { background: #fafafa; }',
-              'tr:last-child td { font-weight: 600; background: #f0f0f0; }',
-              '.updated { color: #888; font-size: 13px; }',
+              '.updated { color: #888; font-size: 13px; margin-bottom: 24px; }',
+              '.cards { display: flex; gap: 16px; flex-wrap: wrap; margin: 16px 0 32px; }',
+              '.table-wrap { overflow-x: auto; border: 1px solid #ddd; border-radius: 8px; margin-bottom: 32px; }',
+              'table { width: 100%; border-collapse: collapse; font-size: 13px; }',
+              'th { text-align: left; font-weight: 600; color: #444; }',
+              'tr:hover td { background: #fafafa; }',
               '</style>',
               '</head>',
               '<body>',
               '<h1>Repo Traffic</h1>',
               '<p class=\"updated\">Last updated: ' + new Date().toUTCString() + '</p>',
-              '<h2>Views</h2>',
+
+              '<h2>Totals</h2>',
+              '<div class=\"cards\">' + totalCards + '</div>',
+
+              '<h2>Views chart</h2>',
               '<img src=\"charts/views.png\" alt=\"Views chart\"/>',
-              '<h2>Clones</h2>',
+
+              '<h2>Views table</h2>',
+              '<div class=\"table-wrap\">',
+              '<table>',
+              '<thead>' + viewsTableHeader + '</thead>',
+              '<tbody>' + viewsTableRows + '</tbody>',
+              '</table>',
+              '</div>',
+
+              '<h2>Clones chart</h2>',
               '<img src=\"charts/clones.png\" alt=\"Clones chart\"/>',
+
+              '<h2>Clones table</h2>',
+              '<div class=\"table-wrap\">',
+              '<table>',
+              '<thead>' + clonesTableHeader + '</thead>',
+              '<tbody>' + clonesTableRows + '</tbody>',
+              '</table>',
+              '</div>',
+
               '</body>',
               '</html>'
             ].join('\n'));
@@ -244,7 +325,6 @@ jobs:
             }
 
             console.log('Boundary commit: ' + boundary);
-
             execSync('git reset --soft ' + boundary + '^');
             execSync('git commit -m \"chore: squash history older than 1 year (totals preserved in CSV)\"');
             console.log('Squash complete.');
