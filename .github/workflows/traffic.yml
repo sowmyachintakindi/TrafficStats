@@ -160,7 +160,7 @@ jobs:
                   data: vRows.map(r => parseInt(r[1 + i * 2]) || 0),
                   borderColor: COLORS[i * 2],
                   backgroundColor: COLORS[i * 2] + '22',
-                  tension: 0.3, fill: true
+                  tension: 0.3, fill: false
                 },
                 {
                   label: slug + ' uniques',
@@ -180,7 +180,7 @@ jobs:
                   data: cRows.map(r => parseInt(r[1 + i * 2]) || 0),
                   borderColor: COLORS[i * 2],
                   backgroundColor: COLORS[i * 2] + '22',
-                  tension: 0.3, fill: true
+                  tension: 0.3, fill: false
                 },
                 {
                   label: slug + ' unique cloners',
