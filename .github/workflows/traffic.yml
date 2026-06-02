@@ -33,7 +33,7 @@ jobs:
         run: |
           mkdir -p traffic charts
 
-          REPOS="sowmyachintakindi/PerfMLOps_Zero_Human_ML_Performance_Framework sowmyachintakindi/Energy_Proportional_AI_Load_Balancing sowmyachintakindi/Elastic_ML_Training_Infrastructure sowmyachintakindi/API_onPrem_vs_AWSEC2_vs_AWSLambda"
+          REPOS="sowmyachintakindi/PerfMLOps_Zero_Human_ML_Performance_Framework sowmyachintakindi/Near_Future_Performance_Prediction_Using_PyTorch_Deep_Learning_Framework sowmyachintakindi/Energy_Proportional_AI_Load_Balancing sowmyachintakindi/Elastic_ML_Training_Infrastructure sowmyachintakindi/API_onPrem_vs_AWSEC2_vs_AWSLambda"
 
           for REPO in $REPOS; do
             SLUG=$(echo $REPO | cut -d'/' -f2)
@@ -50,7 +50,7 @@ jobs:
             const { createCanvas } = require('canvas');
             const { Chart } = require('chart.js/auto');
 
-            const repos = 'sowmyachintakindi/PerfMLOps_Zero_Human_ML_Performance_Framework sowmyachintakindi/Energy_Proportional_AI_Load_Balancing sowmyachintakindi/Elastic_ML_Training_Infrastructure sowmyachintakindi/API_onPrem_vs_AWSEC2_vs_AWSLambda'.split(' ');
+            const repos = 'sowmyachintakindi/PerfMLOps_Zero_Human_ML_Performance_Framework sowmyachintakindi/Near_Future_Performance_Prediction_Using_PyTorch_Deep_Learning_Framework sowmyachintakindi/Energy_Proportional_AI_Load_Balancing sowmyachintakindi/Elastic_ML_Training_Infrastructure sowmyachintakindi/API_onPrem_vs_AWSEC2_vs_AWSLambda'.split(' ');
             const slugs = repos.map(r => r.split('/')[1]);
             const COLORS = ['#6366f1','#14b8a6','#f59e0b','#ef4444'];
 
